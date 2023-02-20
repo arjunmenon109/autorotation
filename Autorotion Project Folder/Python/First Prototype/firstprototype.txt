@@ -1,0 +1,9 @@
+FIRST PROTOTYPE DATA
+
+Before we make a calculated cad model of the autorotating prototype we need to first calculate basic values for both Wm and Area (Cd) in order to get the design conditions
+
+Material Details:
+
+PLA Plastic
+Wm = 30g
+Mass Model for Radius = Mass Almost Doubles with incresing radius
