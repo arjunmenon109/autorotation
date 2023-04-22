@@ -1,3 +1,4 @@
+
 /*
          ___           __          ____          __          __              
         /   |  __  __ / /_ ____   / __ \ ____   / /_ ____ _ / /_ ____   _____
@@ -59,6 +60,8 @@ int stored_caliamount;
 int stored_calidelay;
 int stored_SurfAlt;
 int value;
+static int counter = 0;
+static String buffer = "";
 
 
 /*
@@ -96,17 +99,13 @@ MPU6050_DLPF_BW_20: bandwidth = 20 Hz, delay = 8.5 ms
 MPU6050_DLPF_BW_10: bandwidth = 10 Hz, delay = 13.8 ms
 MPU6050_DLPF_BW_5: bandwidth = 5 Hz, delay = 19.0 ms
 */
-
 //Init
 int16_t ax, ay, az;
 int16_t gx, gy, gz;
-
-
-
 #define LED_PIN 16
 bool blinkState = false;
-
-void setup(){
+void setup()
+{
   Serial.begin(115200);
   paraservo.attach(2);
   paraservo.write(130);
@@ -133,7 +132,7 @@ void setup(){
   int caliamount = (stored_caliamount != 0) ? stored_caliamount : 0;
   int calidelay = (stored_calidelay != 0) ? stored_calidelay : 0;
   int SurfAlt = (stored_SurfAlt != 0) ? stored_SurfAlt : 0;
-
+  //Serial.println(SurfAlt);
   Serial.println("Initializing I2C devices...");
   Wire.begin(4,5);
   delay(500); 
@@ -251,7 +250,7 @@ void setup(){
   Serial.println("▄▀█ █░█ ▀█▀ █▀█ █▀█ █▀█ ▀█▀ ▄▀█ ▀█▀ █▀█ █▀█ ® ");
   Serial.println("█▀█ █▄█ ░█░ █▄█ █▀▄ █▄█ ░█░ █▀█ ░█░ █▄█ █▀▄ ");   
   Serial.println("Send Command 'I' for list of commands");                                 
-  Serial.println("Ready, awaiting commands sire!");
+  Serial.println("Ready, awaiting commands!");
   
   digitalWrite(LED_PIN, HIGH);
 }
@@ -259,6 +258,7 @@ void loop()
   {
     if(Serial.available())
     {
+      //Serial.println(SurfAlt);
       char command = Serial.read();
       Serial.println(command);
       if (command == 'R')
@@ -276,6 +276,7 @@ void loop()
         Serial.println("W: Start/Stop Reaction Wheel");
         Serial.println("%: Sudo Mode");
         Serial.println("@: Sudo Settings");
+        Serial.println("*: Arm/DisArm Parachute (By Default in logger at 20mtr after calib)");
         Serial.println("z: Lower Case, to Restart System");        
         return;
       }
@@ -283,38 +284,32 @@ void loop()
       {
         Serial.println("Starting logging in 3 Seconds...");
         delay(3000);
-        if (SurfAlt != 0)
+        while (Serial.read() != 'S')
         {
-          while (Serial.read() != 'S')
-          {
-            logging();
-            delay(10);
-          }
-          return;
+          logging();
+          delay(10);
         }
-        else 
-        {
-          while (Serial.read() != 'S')
-          {
-            logging();
-            delay(10);
-          }
-          return;
-        }
-        
-      }
+        Serial.println("Logging Stopped and Saved");
+        dataFile.print(buffer);
+        dataFile.flush();
+        counter = 0;
+        String buffer = "";
+      }      
       else if (command == 'D')
       {
         deletefile();
+        delay(500);
+        Serial.println("Restarting ESP");
+        ESP.restart();
         return;
       }
       else if (command == 'P')
       {
         if (paratest == 0)
-        {
+        {     
           Serial.println("Opening Parachute Latch");
-          paraservo.write(50);
-           paratest = 1;
+          paraservo.write(65);
+          paratest = 1;
         return;
         }
         else 
@@ -615,11 +610,7 @@ void loop()
           Serial.print("Turn On Dev Mode");
           return;
         }
-      }
-    
-  
-
-      
+      }      
       else if (command == '%')
       {
         if (chadmode == false)
@@ -650,13 +641,13 @@ void loop()
           return;
         }
       }
-      else if (command == 'z') {
+      else if (command == 'z') 
+      {
       Serial.println("Restarting ESP");
       ESP.restart();
       }
     }
   }
-  
 void calibrate()
 {
   digitalWrite(LED_PIN, LOW);
@@ -673,7 +664,7 @@ void calibrate()
   Serial.print("Altitude Recorded: ");
   Serial.println(calialtiude[o]);
   delay(calidelay);
-}
+  }
   for (int o = 0; o < caliamount; o++) 
   {
   calisum += calialtiude[o];
@@ -695,48 +686,58 @@ void calibrate()
   digitalWrite(LED_PIN, HIGH);
   return;
 }
-void logging(){   
-  digitalWrite(LED_PIN, HIGH);
+void logging() 
+{
+  
+  //digitalWrite(LED_PIN, LOW);
   mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
   float temp = bmp.readTemperature();
   float pressure = bmp.readPressure();
   float altitude = bmp.readAltitude();
   float realaltitude = bmp.readAltitude(101500);
-  float heading = Compass.GetHeadingDegrees();
-  if (dataFile) {
-    if (altitude <= 20 && p == 1)
-    {
-      paraservo.write(50);
-      p=p+1;
-    }
-    dataFile.print(altitude - SurfAlt);
-    dataFile.print(",");
-    dataFile.print(ax);
-    dataFile.print(",");
-    dataFile.print(ay);
-    dataFile.print(",");
-    dataFile.print(az);
-    dataFile.print(",");
-    dataFile.print(gx);
-    dataFile.print(",");
-    dataFile.print(gy);
-    dataFile.print(",");
-    dataFile.println(gy);
-    dataFile.flush();
-    Serial.print("data logged altitude: ");
-    Serial.println(altitude - SurfAlt);
+  //float heading = Compass.GetHeadingDegrees();
+  //Parachute Opening Command Goes here.
+  if (p==1 && ((altitude-SurfAlt)<=20))
+  {
+    Serial.println("Opening Parachute Latch");
+    paraservo.write(65);
+
+
   }
-  digitalWrite(LED_PIN, LOW);
+  // accumulate data in buffer
+  buffer += String(altitude - SurfAlt) + ",";
+  buffer += String(ax) + ",";
+  buffer += String(ay) + ",";
+  buffer += String(az) + ",";
+  buffer += String(gx) + ",";
+  buffer += String(gy) + ",";
+  buffer += String(gz) + "\n";
+  Serial.print(".");
+  
+  // write buffer to file every 100 iterations
+  if (++counter == 100) {
+    if (dataFile) {
+      digitalWrite(LED_PIN, LOW);
+      dataFile.print(buffer);
+      dataFile.flush();
+    }
+    Serial.print(buffer);
+    buffer = "";
+    counter = 0;
+    digitalWrite(LED_PIN, HIGH);
+  }
+  //digitalWrite(LED_PIN, HIGH);
 }
- void deletefile(){
+void deletefile()
+{
   LittleFS.remove(FILENAME);
   Serial.println("Data File Removed");
   digitalWrite(LED_PIN, HIGH);
   delay(100);
   digitalWrite(LED_PIN, LOW); 
- }
-
-void readfile(){
+}
+void readfile()
+{
   if (!dataFile){
     Serial.print("Error - No Saved DATA");
     return;
@@ -755,4 +756,3 @@ void readfile(){
   delay(100);
   digitalWrite(LED_PIN, LOW);
 }
- 
